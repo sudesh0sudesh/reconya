@@ -351,11 +351,31 @@ func InitializeSchema(db *sql.DB) error {
 		return fmt.Errorf("failed to create index on geolocation_cache.expires_at: %w", err)
 	}
 
+	// Create vulnerabilities table
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS vulnerabilities (
+                id TEXT PRIMARY KEY,
+                device_id TEXT,
+                target TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                severity TEXT,
+                discovered_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (device_id) REFERENCES devices(id)
+        )`)
+	if err != nil {
+		return fmt.Errorf("failed to create vulnerabilities table: %w", err)
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_vulnerabilities_device_id ON vulnerabilities(device_id)`)
+	if err != nil {
+		return fmt.Errorf("failed to create index on vulnerabilities.device_id: %w", err)
+	}
+
 	// Create settings table
 	_, err = db.Exec(`
-	CREATE TABLE IF NOT EXISTS settings (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS settings (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
 		screenshots_enabled BOOLEAN NOT NULL DEFAULT 1,
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL,

@@ -22,6 +22,7 @@ import (
 	"reconya-ai/internal/network"
 	"reconya-ai/internal/nicidentifier"
 	"reconya-ai/internal/oui"
+	"reconya-ai/internal/pd"
 	"reconya-ai/internal/pingsweep"
 	"reconya-ai/internal/portscan"
 	"reconya-ai/internal/scan"
@@ -82,7 +83,7 @@ func runGeolocationCacheCleanup(repo *db.GeolocationRepository, done <-chan bool
 	defer ticker.Stop()
 
 	infoLogger.Println("Geolocation cache cleanup service started")
-	
+
 	// Run initial cleanup
 	ctx := context.Background()
 	if err := repo.CleanupExpired(ctx); err != nil {
@@ -101,7 +102,7 @@ func runGeolocationCacheCleanup(repo *db.GeolocationRepository, done <-chan bool
 						errorLogger.Printf("Cache cleanup iteration panic: %v", r)
 					}
 				}()
-				
+
 				if err := repo.CleanupExpired(ctx); err != nil {
 					errorLogger.Printf("Geolocation cache cleanup failed: %v", err)
 				}
@@ -137,7 +138,7 @@ func runNetworkDetection(nicService *nicidentifier.NicIdentifierService, done <-
 						errorLogger.Printf("Network detection iteration panic: %v", r)
 					}
 				}()
-				
+
 				// Check for new networks without creating devices/system status
 				nicService.CheckForNewNetworks()
 			}()
@@ -218,6 +219,7 @@ func main() {
 	systemStatusRepo := repoFactory.NewSystemStatusRepository()
 	geolocationRepo := repoFactory.NewGeolocationRepository()
 	settingsRepo := repoFactory.NewSettingsRepository()
+	vulnerabilityRepo := repoFactory.NewVulnerabilityRepository()
 
 	// Create database manager for concurrent access control
 	dbManager := db.NewDBManager()
@@ -244,12 +246,17 @@ func main() {
 	settingsService := settings.NewSettingsService(settingsRepo)
 	portScanService := portscan.NewPortScanService(deviceService, eventLogService)
 	pingSweepService := pingsweep.NewPingSweepService(cfg, deviceService, eventLogService, networkService, portScanService)
-	
+
 	// Initialize IPv6 monitoring service
 	ipv6MonitorService := ipv6monitor.NewIPv6MonitorService(deviceService, networkService, infoLogger)
-	
+
+	// Initialize ProjectDiscovery services
+	nucleiService := pd.NewNucleiService()
+	subfinderService := pd.NewSubfinderService()
+	httpxService := pd.NewHTTPXService()
+
 	// Initialize scan manager to control scanning
-	scanManager := scan.NewScanManager(pingSweepService, networkService, ipv6MonitorService)
+	scanManager := scan.NewScanManager(pingSweepService, networkService, ipv6MonitorService, nucleiService, subfinderService, httpxService, vulnerabilityRepo)
 
 	// NIC identification for network detection and suggestions
 	nicService := nicidentifier.NewNicIdentifierService(networkService, systemStatusService, eventLogService, deviceService, cfg)
@@ -259,19 +266,19 @@ func main() {
 
 	// Trigger initial network identification and detection
 	nicService.Identify()
-	
+
 	// Remove automatic ping sweep - now controlled by scan manager
 	go runDeviceUpdater(deviceService, done)
-	
+
 	// Start periodic network detection
 	go runNetworkDetection(nicService, done)
-	
+
 	// Start geolocation cache cleanup routine
 	go runGeolocationCacheCleanup(geolocationRepo, done)
 
 	// Initialize web handlers for HTMX frontend
 	sessionSecret := "your-secret-key-here-replace-in-production"
-	webHandler := web.NewWebHandler(deviceService, eventLogService, networkService, systemStatusService, scanManager, geolocationRepo, settingsService, nicService, cfg, sessionSecret)
+	webHandler := web.NewWebHandler(deviceService, eventLogService, networkService, systemStatusService, scanManager, geolocationRepo, settingsService, nicService, cfg, sessionSecret, vulnerabilityRepo)
 	router := webHandler.SetupRoutes()
 	loggedRouter := middleware.LoggingMiddleware(router)
 
@@ -351,7 +358,6 @@ func main() {
 
 	waitForShutdown(server, done)
 }
-
 
 func waitForShutdown(server *http.Server, done chan bool) {
 	stop := make(chan os.Signal, 1)

@@ -39,6 +39,7 @@ func (h *WebHandler) SetupRoutes() *mux.Router {
 	api.HandleFunc("/dashboard-metrics", h.APIDashboardMetrics).Methods("GET")
 	api.HandleFunc("/event-logs", h.APIEventLogs).Methods("GET")
 	api.HandleFunc("/event-logs-table", h.APIEventLogsTable).Methods("GET")
+	api.HandleFunc("/vulnerabilities", h.APIVulnerabilities).Methods("GET")
 	api.HandleFunc("/network-map", h.APINetworkMap).Methods("GET")
 	api.HandleFunc("/traffic-core", h.APITrafficCore).Methods("GET")
 	api.HandleFunc("/device-list", h.APIDeviceList).Methods("GET")
@@ -62,7 +63,7 @@ func (h *WebHandler) SetupRoutes() *mux.Router {
 	api.HandleFunc("/scan/control", h.APIScanControl).Methods("GET")
 	api.HandleFunc("/scan/select-network", h.APIScanSelectNetwork).Methods("POST")
 	api.HandleFunc("/about", h.APIAbout).Methods("GET")
-	
+
 	// Settings endpoints
 	api.HandleFunc("/settings", h.APISettings).Methods("GET")
 	api.HandleFunc("/settings/screenshots", h.APISettingsScreenshots).Methods("POST")

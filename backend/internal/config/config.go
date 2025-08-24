@@ -19,11 +19,12 @@ type Config struct {
 	Port         string
 	DatabaseType DatabaseType
 	// SQLite config
-	SQLitePath   string
+	SQLitePath string
 	// Common configs
 	Username     string
 	Password     string
 	DatabaseName string
+	NetworkCIDR  string
 }
 
 func LoadConfig() (*Config, error) {
@@ -56,6 +57,8 @@ func LoadConfig() (*Config, error) {
 	// Set database type to SQLite
 	dbType := string(SQLite)
 
+	networkCIDR := os.Getenv("NETWORK_CIDR")
+
 	config := &Config{
 		JwtKey:       []byte(jwtSecret),
 		Port:         port,
@@ -63,6 +66,7 @@ func LoadConfig() (*Config, error) {
 		Username:     username,
 		Password:     password,
 		DatabaseName: databaseName,
+		NetworkCIDR:  networkCIDR,
 	}
 
 	// Configure SQLite database

@@ -100,11 +100,26 @@
                 <h5 class="section-header mb-0">EVENT LOGS</h5>
             </div>
             <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
-                <div id="event-logs" 
-                     hx-get="/api/event-logs" 
+                <div id="event-logs"
+                     hx-get="/api/event-logs"
                      hx-trigger="load, every 2s"
                      hx-indicator=".htmx-indicator">
                     {{template "components/event-logs.html" .EventLogs}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Vulnerabilities Section -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="section-header mb-0">VULNERABILITIES</h5>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <div id="vulnerabilities"
+                     hx-get="/api/vulnerabilities"
+                     hx-trigger="load, every 10s"
+                     hx-indicator=".htmx-indicator">
+                    {{template "components/vulnerabilities.html" .}}
                 </div>
             </div>
         </div>

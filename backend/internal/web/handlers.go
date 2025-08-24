@@ -40,22 +40,24 @@ type WebHandler struct {
 	geolocationRepository *db.GeolocationRepository
 	settingsService       *settings.SettingsService
 	nicIdentifierService  *nicidentifier.NicIdentifierService
+	vulnerabilityRepo     db.VulnerabilityRepository
 	templates             *template.Template
 	sessionStore          *sessions.CookieStore
 	config                *config.Config
 }
 
 type PageData struct {
-	Page         string
-	User         *models.User
-	Error        string
-	Username     string
-	Devices      []*models.Device
-	EventLogs    []*models.EventLog
+	Page             string
+	User             *models.User
+	Error            string
+	Username         string
+	Devices          []*models.Device
+	EventLogs        []*models.EventLog
+	Vulnerabilities  []*models.Vulnerability
 	SystemStatusData *SystemStatusTemplateData // Use the new struct for system status
-	NetworkMap   *NetworkMapData
-	Networks     []models.Network
-	ScanState    *scan.ScanState
+	NetworkMap       *NetworkMapData
+	Networks         []models.Network
+	ScanState        *scan.ScanState
 }
 
 type NetworkMapData struct {
@@ -91,6 +93,7 @@ func NewWebHandler(
 	nicIdentifierService *nicidentifier.NicIdentifierService,
 	config *config.Config,
 	sessionSecret string,
+	vulnerabilityRepo db.VulnerabilityRepository,
 ) *WebHandler {
 	// Initialize template functions
 	funcMap := template.FuncMap{
@@ -413,6 +416,7 @@ func NewWebHandler(
 		geolocationRepository: geolocationRepository,
 		settingsService:       settingsService,
 		nicIdentifierService:  nicIdentifierService,
+		vulnerabilityRepo:     vulnerabilityRepo,
 		templates:             tmpl,
 		sessionStore:          store,
 		config:                config,
@@ -535,13 +539,13 @@ func (h *WebHandler) Home(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Page:         "dashboard",
-		User:         user,
+		Page:             "dashboard",
+		User:             user,
 		SystemStatusData: systemStatusData,
-		Devices:      devices,
-		EventLogs:    eventLogs,
-		Networks:     networksSlice,
-		ScanState:    &scanState,
+		Devices:          devices,
+		EventLogs:        eventLogs,
+		Networks:         networksSlice,
+		ScanState:        &scanState,
 	}
 
 	if err := h.templates.ExecuteTemplate(w, "home.html", data); err != nil {
@@ -722,7 +726,7 @@ func (h *WebHandler) APIDeviceModal(w http.ResponseWriter, r *http.Request) {
 	screenshotsEnabled := h.settingsService.AreScreenshotsEnabled(fmt.Sprintf("%d", user.ID))
 
 	// Debug logging for IPv6 fields
-	log.Printf("Device %s IPv6 data: LinkLocal=%v, UniqueLocal=%v, Global=%v, Addresses=%v", 
+	log.Printf("Device %s IPv6 data: LinkLocal=%v, UniqueLocal=%v, Global=%v, Addresses=%v",
 		device.ID, device.IPv6LinkLocal, device.IPv6UniqueLocal, device.IPv6Global, device.IPv6Addresses)
 
 	// Create template data with device and settings
@@ -850,9 +854,9 @@ func (h *WebHandler) APITestIPv6(w http.ResponseWriter, r *http.Request) {
 
 	// Add test IPv6 data to the device
 	ipv6Addresses := map[string]string{
-		"link_local":    "fe80::1234:5678:90ab:cdef",
-		"unique_local":  "fd00::1234:5678:90ab:cdef",
-		"global":        "2001:db8::1234:5678:90ab:cdef",
+		"link_local":   "fe80::1234:5678:90ab:cdef",
+		"unique_local": "fd00::1234:5678:90ab:cdef",
+		"global":       "2001:db8::1234:5678:90ab:cdef",
 	}
 
 	err := h.deviceService.UpdateDeviceIPv6Addresses(deviceID, ipv6Addresses)
@@ -1002,6 +1006,30 @@ func (h *WebHandler) APIEventLogsTable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.templates.ExecuteTemplate(w, "components/event-logs-table.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// APIVulnerabilities returns recent vulnerability findings for the dashboard.
+func (h *WebHandler) APIVulnerabilities(w http.ResponseWriter, r *http.Request) {
+	session, _ := h.sessionStore.Get(r, "reconya-session")
+	user := h.getUserFromSession(session)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vulns, err := h.vulnerabilityRepo.FindAll(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Vulnerabilities []*models.Vulnerability
+	}{Vulnerabilities: vulns}
+
+	if err := h.templates.ExecuteTemplate(w, "components/vulnerabilities.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -1249,7 +1277,6 @@ func (h *WebHandler) APIDeviceList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	data := struct {
 		Devices []*models.Device
 	}{
@@ -1321,7 +1348,7 @@ func (h *WebHandler) APINetworks(w http.ResponseWriter, r *http.Request) {
 		log.Printf("APINetworks: Error getting networks: %v", err)
 		networksSlice = []models.Network{} // Ensure it's an empty slice, not nil
 	}
-	
+
 	log.Printf("APINetworks: Retrieved %d networks from service", len(networksSlice))
 
 	// Convert to pointer slice for template
@@ -1335,7 +1362,7 @@ func (h *WebHandler) APINetworks(w http.ResponseWriter, r *http.Request) {
 
 	// Get scan state for network selection highlighting
 	scanState := h.scanManager.GetState()
-	
+
 	data := struct {
 		Networks  []*models.Network
 		ScanState *scan.ScanState
@@ -1399,7 +1426,7 @@ func (h *WebHandler) APICreateNetwork(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	cidr := strings.TrimSpace(r.FormValue("cidr"))
 	description := strings.TrimSpace(r.FormValue("description"))
-	
+
 	log.Printf("APICreateNetwork: Received request - name=%s, cidr=%s, description=%s", name, cidr, description)
 
 	data := struct {
@@ -1543,7 +1570,7 @@ func (h *WebHandler) APIDeleteNetwork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to check network devices: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	if deviceCount > 0 {
 		http.Error(w, fmt.Sprintf("Cannot delete network: %d devices are still using this network. Please remove or reassign devices first.", deviceCount), http.StatusBadRequest)
 		return
@@ -1797,7 +1824,7 @@ func (h *WebHandler) APIScanStatus(w http.ResponseWriter, r *http.Request) {
 // APIScanStart starts scanning a network
 func (h *WebHandler) APIScanStart(w http.ResponseWriter, r *http.Request) {
 	log.Printf("APIScanStart: Request received, method=%s", r.Method)
-	
+
 	session, _ := h.sessionStore.Get(r, "reconya-session")
 	user := h.getUserFromSession(session)
 	if user == nil {
@@ -1808,7 +1835,7 @@ func (h *WebHandler) APIScanStart(w http.ResponseWriter, r *http.Request) {
 
 	networkID := r.FormValue("network-selector")
 	log.Printf("APIScanStart: Network ID from form: '%s'", networkID)
-	
+
 	if networkID == "" {
 		log.Printf("APIScanStart: No network ID provided")
 		// Return scan control component with error message
@@ -1987,11 +2014,11 @@ func (h *WebHandler) APIDashboardMetrics(w http.ResponseWriter, r *http.Request)
 	}
 
 	metrics := map[string]interface{}{
-		"networkRange":    networkCIDR,
-		"publicIP":        publicIP,
-		"devicesFound":    len(devices),
-		"devicesOnline":   networkMapData.NetworkInfo.OnlineDevices,
-		"devicesOffline":  networkMapData.NetworkInfo.OfflineDevices,
+		"networkRange":   networkCIDR,
+		"publicIP":       publicIP,
+		"devicesFound":   len(devices),
+		"devicesOnline":  networkMapData.NetworkInfo.OnlineDevices,
+		"devicesOffline": networkMapData.NetworkInfo.OfflineDevices,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2057,16 +2084,16 @@ func (h *WebHandler) APIAbout(w http.ResponseWriter, r *http.Request) {
 
 // WorldMapData holds geolocation information for the world map component
 type WorldMapData struct {
-	PublicIP   string
-	Location   string
-	Latitude   string
-	Longitude  string
-	Country    string
-	City       string
-	Timezone   string
-	ISP        string
-	PinX       int // X coordinate for pin position on map (0-400)
-	PinY       int // Y coordinate for pin position on map (0-200)
+	PublicIP  string
+	Location  string
+	Latitude  string
+	Longitude string
+	Country   string
+	City      string
+	Timezone  string
+	ISP       string
+	PinX      int // X coordinate for pin position on map (0-400)
+	PinY      int // Y coordinate for pin position on map (0-200)
 }
 
 // GeolocationResponse represents the response from ipapi.co
@@ -2396,7 +2423,7 @@ func (h *WebHandler) APISettingsScreenshots(w http.ResponseWriter, r *http.Reque
 	// Parse the enabled parameter - checkbox sends value when checked, nothing when unchecked
 	enabledStr := r.FormValue("enabled")
 	enabled := enabledStr == "true"
-	
+
 	log.Printf("Screenshot settings update: enabled=%s, parsed=%v", enabledStr, enabled)
 
 	// Update settings
@@ -2486,13 +2513,13 @@ func (h *WebHandler) APINetworkSuggestion(w http.ResponseWriter, r *http.Request
 // APIDetectedNetworksDebug returns detected networks without authentication (for testing)
 func (h *WebHandler) APIDetectedNetworksDebug(w http.ResponseWriter, r *http.Request) {
 	detectedNetworks := h.nicIdentifierService.GetDetectedNetworks()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"detected_networks": detectedNetworks,
-		"count":            len(detectedNetworks),
+		"count":             len(detectedNetworks),
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode detected networks", http.StatusInternalServerError)
 	}
@@ -2505,15 +2532,14 @@ func (h *WebHandler) APINetworksDebug(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to get networks: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"existing_networks": networks,
-		"count":            len(networks),
+		"count":             len(networks),
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode networks", http.StatusInternalServerError)
 	}
 }
-
