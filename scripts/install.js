@@ -1,10 +1,47 @@
 #!/usr/bin/env node
 
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// Ensure required dependencies are installed before requiring them
+const requiredDeps = [
+  'chalk',
+  'commander',
+  'inquirer',
+  'cross-spawn',
+  'find-process'
+];
+
+function ensureDependencies() {
+  const missing = requiredDeps.filter(dep => {
+    try {
+      require.resolve(dep);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+
+  if (missing.length > 0) {
+    console.log('Installing missing dependencies:', missing.join(', '));
+    try {
+      execSync('npm install --ignore-scripts --no-audit --no-fund', {
+        stdio: 'inherit',
+        cwd: path.join(__dirname, '..')
+      });
+    } catch (e) {
+      console.error('Failed to install dependencies:', e.message);
+      process.exit(1);
+    }
+  }
+}
+
+ensureDependencies();
+
 const { program } = require('commander');
 const inquirer = require('inquirer');
 const Utils = require('./utils');
-const fs = require('fs');
-const path = require('path');
 
 class Installer {
   constructor() {
