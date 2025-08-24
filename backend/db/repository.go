@@ -75,6 +75,14 @@ type SettingsRepository interface {
 	Update(settings *models.Settings) error
 }
 
+// VulnerabilityRepository defines operations for vulnerability findings
+type VulnerabilityRepository interface {
+	Repository
+	Create(ctx context.Context, v *models.Vulnerability) error
+	FindByDeviceID(ctx context.Context, deviceID string) ([]*models.Vulnerability, error)
+	FindAll(ctx context.Context) ([]*models.Vulnerability, error)
+}
+
 // RepositoryFactory creates repositories
 type RepositoryFactory struct {
 	SQLiteDB *sql.DB
@@ -119,8 +127,12 @@ func (f *RepositoryFactory) NewSettingsRepository() SettingsRepository {
 	return NewSQLiteSettingsRepository(f.SQLiteDB)
 }
 
+// NewVulnerabilityRepository creates a new vulnerability repository
+func (f *RepositoryFactory) NewVulnerabilityRepository() VulnerabilityRepository {
+	return NewSQLiteVulnerabilityRepository(f.SQLiteDB)
+}
+
 // GenerateID generates a unique ID for a record
 func GenerateID() string {
 	return uuid.New().String()
 }
-
