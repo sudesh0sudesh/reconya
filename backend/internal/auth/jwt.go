@@ -7,7 +7,7 @@ import (
 
 	"reconya-ai/internal/config"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type Credentials struct {
@@ -17,7 +17,7 @@ type Credentials struct {
 
 type Claims struct {
 	Username string `json:"username"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 type AuthHandlers struct {
@@ -32,8 +32,8 @@ func (h *AuthHandlers) GenerateJWT(username string) (string, error) {
 	expirationTime := time.Now().Add(3600 * time.Minute)
 	claims := &Claims{
 		Username: username,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -42,7 +42,7 @@ func (h *AuthHandlers) GenerateJWT(username string) (string, error) {
 
 func (h *AuthHandlers) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	var creds Credentials
 	err := json.NewDecoder(r.Body).Decode(&creds)
 	if err != nil {
